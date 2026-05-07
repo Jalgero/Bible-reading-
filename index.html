@@ -92,18 +92,17 @@
             color: var(--primary-color);
             font-size: 1.1rem;
             cursor: pointer;
-            list-style: none; /* Gömmer standard-pilen i moderna webbläsare */
+            list-style: none;
             margin: 0;
             transition: background-color 0.2s;
             user-select: none;
         }
         summary.book-title::-webkit-details-marker {
-            display: none; /* Gömmer pilen i Safari */
+            display: none;
         }
         summary.book-title:hover {
             background-color: #f9f9f9;
         }
-        /* Custom plus/minus-ikon */
         summary.book-title::after {
             content: '+';
             float: right;
@@ -125,13 +124,24 @@
             margin-bottom: 1rem;
             padding: 0.8rem;
         }
-        .section-header {
-            font-size: 0.8rem;
-            font-weight: bold;
-            color: #777;
-            margin-bottom: 0.6rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+        .section-header-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.8rem;
+            padding-bottom: 0.6rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .master-checkbox-label {
+            font-weight: 600;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: opacity 0.2s;
+        }
+        .master-checkbox-label:hover {
+            opacity: 0.8;
         }
         .chapter-grid {
             display: grid;
@@ -302,6 +312,7 @@
     const progressBar = document.getElementById('progress-bar');
     const progressText = document.getElementById('progress-text');
     
+    // Använder samma lagring som förra uppdateringen så dina avbockningar sparas
     let savedProgress = JSON.parse(localStorage.getItem('bibelProgress2')) || {};
 
     function saveProgress() {
@@ -310,9 +321,10 @@
     }
 
     function updateProgress() {
-        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        // Räkna bara de enskilda kapitel-kryssrutorna (inte "Markera hela"-kryssen) för rätt procent
+        const checkboxes = document.querySelectorAll('input.chapter-checkbox');
         const total = checkboxes.length;
-        const checked = document.querySelectorAll('input[type="checkbox"]:checked').length;
+        const checked = document.querySelectorAll('input.chapter-checkbox:checked').length;
         
         if (total === 0) return;
         
@@ -321,10 +333,9 @@
         progressText.innerText = `${checked} av ${total} kapitel lästa (${percentage}%)`;
     }
 
-    // Funktion för att automatiskt bryta ut t.ex. "1-3" till [1, 2, 3]
     function parseAvsnitt(str) {
         if (str === "Hela") return ["Hela"];
-        if (str.includes(":")) return [str]; // Hanterar specialfall som "116-119:63" som ett stycke
+        if (str.includes(":")) return [str]; 
         
         let result = [];
         let parts = str.split(',');
@@ -359,7 +370,6 @@
             categoryDiv.appendChild(title);
 
             section.books.forEach((book, bookIndex) => {
-                // Skapar en detaljvy (kollapsbar meny) för varje bibelbok
                 const bookDetails = document.createElement('details');
                 bookDetails.className = 'book-group';
 
@@ -377,17 +387,12 @@
                     const sectionBox = document.createElement('div');
                     sectionBox.className = 'section-box';
                     
-                    // Visar en liten rubrik för avsnittet ("Avsnitt: 1-3") om det innehåller fler än ett kapitel
-                    if (parsedChapters.length > 1) {
-                        const sectionHeader = document.createElement('div');
-                        sectionHeader.className = 'section-header';
-                        sectionHeader.innerText = `Avsnitt: ${avsnittStr}`;
-                        sectionBox.appendChild(sectionHeader);
-                    }
-
                     const chapterGrid = document.createElement('div');
                     chapterGrid.className = 'chapter-grid';
 
+                    const chapterElements = []; // Lista för att spara referenser till avsnittets kryssrutor
+
+                    // Skapa de enskilda kapitel-kryssrutorna
                     parsedChapters.forEach(chap => {
                         const itemId = `chk-${sectionIndex}-${bookIndex}-${avsnittIndex}-${chap}`;
                         
@@ -396,6 +401,7 @@
                         
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
+                        checkbox.className = 'chapter-checkbox'; // Klass för att progressbaren ska räkna rätt
                         checkbox.id = itemId;
                         
                         if (savedProgress[itemId]) {
@@ -419,8 +425,58 @@
                         readingItem.appendChild(checkbox);
                         readingItem.appendChild(text);
                         chapterGrid.appendChild(readingItem);
+                        
+                        chapterElements.push(checkbox);
                     });
-                    
+
+                    // Skapa "Markera hela"-kryssrutan ENDAST om avsnittet har fler än 1 kapitel
+                    if (parsedChapters.length > 1) {
+                        const headerRow = document.createElement('div');
+                        headerRow.className = 'section-header-row';
+
+                        const masterLabel = document.createElement('label');
+                        masterLabel.className = 'master-checkbox-label';
+                        
+                        const masterCheckbox = document.createElement('input');
+                        masterCheckbox.type = 'checkbox';
+
+                        // Funktion för att kolla om alla underliggande kapitel är ikryssade
+                        const updateMasterState = () => {
+                            masterCheckbox.checked = chapterElements.every(chk => chk.checked);
+                        };
+                        
+                        // Kolla status vid start
+                        updateMasterState();
+
+                        // Uppdatera master-kryssrutan när enskilda kapitel ändras
+                        chapterElements.forEach(chk => {
+                            chk.addEventListener('change', updateMasterState);
+                        });
+
+                        // Vad som händer när man klickar på "Markera hela"-kryssrutan
+                        masterCheckbox.addEventListener('change', (e) => {
+                            const isChecked = e.target.checked;
+                            chapterElements.forEach(chk => {
+                                if (chk.checked !== isChecked) {
+                                    chk.checked = isChecked;
+                                    savedProgress[chk.id] = isChecked;
+                                    const readingItem = chk.closest('.reading-item');
+                                    if (isChecked) {
+                                        readingItem.classList.add('completed');
+                                    } else {
+                                        readingItem.classList.remove('completed');
+                                    }
+                                }
+                            });
+                            saveProgress();
+                        });
+
+                        masterLabel.appendChild(masterCheckbox);
+                        masterLabel.appendChild(document.createTextNode(`Markera hela avsnitt (${avsnittStr}) som läst`));
+                        headerRow.appendChild(masterLabel);
+                        sectionBox.appendChild(headerRow);
+                    }
+
                     sectionBox.appendChild(chapterGrid);
                     bookContent.appendChild(sectionBox);
                 });
