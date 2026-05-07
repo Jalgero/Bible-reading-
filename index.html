@@ -79,39 +79,90 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        .book-group {
-            padding: 1rem 1.2rem;
+        /* Styling för kollapsbara böcker */
+        details.book-group {
             border-bottom: 1px solid var(--border-color);
         }
-        .book-group:last-child {
+        details.book-group:last-child {
             border-bottom: none;
         }
-        .book-title {
+        summary.book-title {
+            padding: 1rem 1.2rem;
             font-weight: bold;
-            margin-bottom: 0.8rem;
             color: var(--primary-color);
             font-size: 1.1rem;
+            cursor: pointer;
+            list-style: none; /* Gömmer standard-pilen i moderna webbläsare */
+            margin: 0;
+            transition: background-color 0.2s;
+            user-select: none;
+        }
+        summary.book-title::-webkit-details-marker {
+            display: none; /* Gömmer pilen i Safari */
+        }
+        summary.book-title:hover {
+            background-color: #f9f9f9;
+        }
+        /* Custom plus/minus-ikon */
+        summary.book-title::after {
+            content: '+';
+            float: right;
+            font-size: 1.4rem;
+            color: #888;
+            line-height: 1;
+        }
+        details[open] summary.book-title::after {
+            content: '−';
+        }
+        .book-content {
+            padding: 0 1.2rem 1.2rem 1.2rem;
+        }
+        /* Styling för läsavsnitten och rutnätet */
+        .section-box {
+            background: #fafafa;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            padding: 0.8rem;
+        }
+        .section-header {
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: #777;
+            margin-bottom: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .chapter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 0.5rem;
         }
         .reading-item {
             display: flex;
             align-items: center;
-            padding: 0.6rem;
+            padding: 0.5rem 0.6rem;
+            background: #fff;
+            border: 1px solid var(--border-color);
             border-radius: 4px;
-            transition: background-color 0.2s;
+            transition: all 0.2s;
             cursor: pointer;
+            font-size: 0.95rem;
         }
         .reading-item:hover {
-            background-color: #f5f5f5;
+            border-color: var(--primary-color);
+            background: #f4f7fc;
         }
         .reading-item.completed {
             background-color: var(--check-bg);
+            border-color: #c6d8f9;
             text-decoration: line-through;
             color: #666;
         }
         input[type="checkbox"] {
-            margin-right: 1rem;
-            width: 1.3rem;
-            height: 1.3rem;
+            margin-right: 0.5rem;
+            width: 1.2rem;
+            height: 1.2rem;
             cursor: pointer;
             accent-color: var(--primary-color);
         }
@@ -251,10 +302,10 @@
     const progressBar = document.getElementById('progress-bar');
     const progressText = document.getElementById('progress-text');
     
-    let savedProgress = JSON.parse(localStorage.getItem('bibelProgress')) || {};
+    let savedProgress = JSON.parse(localStorage.getItem('bibelProgress2')) || {};
 
     function saveProgress() {
-        localStorage.setItem('bibelProgress', JSON.stringify(savedProgress));
+        localStorage.setItem('bibelProgress2', JSON.stringify(savedProgress));
         updateProgress();
     }
 
@@ -267,7 +318,34 @@
         
         const percentage = Math.round((checked / total) * 100);
         progressBar.style.width = percentage + '%';
-        progressText.innerText = `${checked} av ${total} avsnitt lästa (${percentage}%)`;
+        progressText.innerText = `${checked} av ${total} kapitel lästa (${percentage}%)`;
+    }
+
+    // Funktion för att automatiskt bryta ut t.ex. "1-3" till [1, 2, 3]
+    function parseAvsnitt(str) {
+        if (str === "Hela") return ["Hela"];
+        if (str.includes(":")) return [str]; // Hanterar specialfall som "116-119:63" som ett stycke
+        
+        let result = [];
+        let parts = str.split(',');
+        for (let part of parts) {
+            part = part.trim();
+            if (part.includes('-')) {
+                let [start, end] = part.split('-');
+                start = parseInt(start);
+                end = parseInt(end);
+                if (!isNaN(start) && !isNaN(end)) {
+                    for (let i = start; i <= end; i++) {
+                        result.push(i.toString());
+                    }
+                } else {
+                    result.push(part);
+                }
+            } else {
+                result.push(part);
+            }
+        }
+        return result;
     }
 
     function renderSchedule() {
@@ -281,49 +359,74 @@
             categoryDiv.appendChild(title);
 
             section.books.forEach((book, bookIndex) => {
-                const bookGroup = document.createElement('div');
-                bookGroup.className = 'book-group';
+                // Skapar en detaljvy (kollapsbar meny) för varje bibelbok
+                const bookDetails = document.createElement('details');
+                bookDetails.className = 'book-group';
 
-                const bookTitle = document.createElement('div');
-                bookTitle.className = 'book-title';
-                bookTitle.innerText = book.name;
-                bookGroup.appendChild(bookTitle);
+                const bookSummary = document.createElement('summary');
+                bookSummary.className = 'book-title';
+                bookSummary.innerText = book.name;
+                bookDetails.appendChild(bookSummary);
 
-                book.chapters.forEach((chapter, chapterIndex) => {
-                    const itemId = `chk-${sectionIndex}-${bookIndex}-${chapterIndex}`;
+                const bookContent = document.createElement('div');
+                bookContent.className = 'book-content';
+
+                book.chapters.forEach((avsnittStr, avsnittIndex) => {
+                    const parsedChapters = parseAvsnitt(avsnittStr);
                     
-                    const readingItem = document.createElement('label');
-                    readingItem.className = 'reading-item';
+                    const sectionBox = document.createElement('div');
+                    sectionBox.className = 'section-box';
                     
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.id = itemId;
-                    
-                    if (savedProgress[itemId]) {
-                        checkbox.checked = true;
-                        readingItem.classList.add('completed');
+                    // Visar en liten rubrik för avsnittet ("Avsnitt: 1-3") om det innehåller fler än ett kapitel
+                    if (parsedChapters.length > 1) {
+                        const sectionHeader = document.createElement('div');
+                        sectionHeader.className = 'section-header';
+                        sectionHeader.innerText = `Avsnitt: ${avsnittStr}`;
+                        sectionBox.appendChild(sectionHeader);
                     }
 
-                    checkbox.addEventListener('change', (e) => {
-                        savedProgress[itemId] = e.target.checked;
-                        if (e.target.checked) {
-                            readingItem.classList.add('completed');
-                        } else {
-                            readingItem.classList.remove('completed');
-                        }
-                        saveProgress();
-                    });
+                    const chapterGrid = document.createElement('div');
+                    chapterGrid.className = 'chapter-grid';
 
-                    // Anpassning för att inte skriva "Kapitel Hela"
-                    const displayText = chapter === "Hela" ? chapter : `Kapitel ${chapter}`;
-                    const text = document.createTextNode(displayText);
+                    parsedChapters.forEach(chap => {
+                        const itemId = `chk-${sectionIndex}-${bookIndex}-${avsnittIndex}-${chap}`;
+                        
+                        const readingItem = document.createElement('label');
+                        readingItem.className = 'reading-item';
+                        
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.id = itemId;
+                        
+                        if (savedProgress[itemId]) {
+                            checkbox.checked = true;
+                            readingItem.classList.add('completed');
+                        }
+
+                        checkbox.addEventListener('change', (e) => {
+                            savedProgress[itemId] = e.target.checked;
+                            if (e.target.checked) {
+                                readingItem.classList.add('completed');
+                            } else {
+                                readingItem.classList.remove('completed');
+                            }
+                            saveProgress();
+                        });
+
+                        const displayText = (chap === "Hela" || chap.includes(":")) ? chap : `Kap. ${chap}`;
+                        const text = document.createTextNode(displayText);
+                        
+                        readingItem.appendChild(checkbox);
+                        readingItem.appendChild(text);
+                        chapterGrid.appendChild(readingItem);
+                    });
                     
-                    readingItem.appendChild(checkbox);
-                    readingItem.appendChild(text);
-                    bookGroup.appendChild(readingItem);
+                    sectionBox.appendChild(chapterGrid);
+                    bookContent.appendChild(sectionBox);
                 });
 
-                categoryDiv.appendChild(bookGroup);
+                bookDetails.appendChild(bookContent);
+                categoryDiv.appendChild(bookDetails);
             });
 
             container.appendChild(categoryDiv);
